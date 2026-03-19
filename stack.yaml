@@ -42,6 +42,9 @@ packages:
 #
 extra-deps:
 - linear-base-0.7.0
+- cassava-0.5.4.1
+- containers-0.7
+- vector-0.13.2.0
 - text-2.1.3
 - data-default-class-0.1.2.2
 - dotenv-0.12.0.0
