@@ -23,36 +23,29 @@ import Prelude.Linear
       String,
       IO,
       Either,
-      undefined,
       putStrLn,
-      FilePath,
-      Semigroup((<>)), otherwise )
+      FilePath, otherwise )
 
 import Prelude
     (($),
-     (.),
-     (<$>), id, Either (..), (++), error, Show (..), Foldable (..), Eq (..), Maybe)
+     (.), Either (..), (++), Foldable (..), Eq (..), Maybe)
 
-import qualified System.IO as System
 import qualified Control.Functor.Linear as Linear
 import qualified System.IO.Resource.Linear as Linear
 import qualified Data.Unrestricted.Linear as Linear
 import Data.Text (Text, concat, pack, unpack)
-import Data.ByteString.Lazy as BL hiding (null)
 import Data.ByteString as BS hiding (null)
 import GHC.Generics (Generic)
 import Data.Csv.Incremental (Parser(..),decode, HasHeader (HasHeader))
-import Data.Csv(FromRecord, ToRecord, FromField (..), Field, ToField (..), encode, encodeByName, ToNamedRecord (..), namedRecord, (.=), NamedRecord, Name)
+import Data.Csv(FromRecord, ToRecord, FromField (..), Field, ToField (..), encodeByName, ToNamedRecord (..), namedRecord, (.=), NamedRecord, Name)
 import qualified Data.Vector as Vec
 
 import qualified WBeeLib.ByteString as WBL
 import qualified WBeeLib.Text as WBL
 import System.Exit (exitFailure, exitSuccess)
-import Control.Monad (Monad(..), return, MonadPlus (mzero), when)
+import Control.Monad (Monad(..), return, when)
 import Prelude (print, MonadFail (fail))
 import GHC.IO.IOMode (IOMode(..))
-import qualified System.IO.Linear as Linear
-import qualified System.IO as Data.Text
 import qualified Data.Map as Map
 
 data BKType = BKAlias 
@@ -103,10 +96,10 @@ instance ToNamedRecord Bookmark where
         "label" .= bkLabel b, 
         "target" .= bkTarget b]
 
-logDebug 
+_logDebug 
     :: String 
     -> Linear.RIO ()
-logDebug !s = Linear.do
+_logDebug !s = Linear.do
     h <- Linear.unsafeAcquire (Linear.return (Linear.Ur ())) (\_ -> Linear.return ())
     r <- Linear.unsafeFromSystemIOResource_ (\_ -> putStrLn s) h
     Linear.release r

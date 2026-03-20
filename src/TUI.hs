@@ -8,36 +8,15 @@
 module TUI
     (mainLoop) where
 
-import Data.Data 
-    (Typeable, 
-     Data)
-
-import System.Console.CmdArgs
-    (Default (def),
-     (&=),
-     summary,
-     help,
-     cmdArgsMode,
-     cmdArgsRun,
-     args,
-     modes, auto, Mode)
-import System.Environment (withArgs, getArgs)
-import Control.Monad (void)
-import System.Console.CmdArgs (CmdArgs)
+import System.Environment (getArgs)
 import BK (addBookmark, Bookmark (..), removeBookmark, findBookmark, handler, handler_, BKType (..), parseBKType)
-import qualified WBeeLib.ByteString as WBL
-import Data.Text (pack, Text, split, unpack, splitOn)
-import System.Exit (exitFailure)
-import qualified Data.ByteString as BS
-import Data.Kind (Type)
-import System.Console.CmdArgs.GetOpt (getOpt)
-import qualified WBeeLib.Text as WBL
+import Data.Text (pack, Text, split, unpack)
 
-progName :: String
-progName = "bk"
+_progName :: String
+_progName = "bk"
 
-progVersion :: String
-progVersion = "0.0.0.1"
+_progVersion :: String
+_progVersion = "0.0.0.1"
 
 data BKOption 
     = OptAddBK BKType Text Text
@@ -102,8 +81,8 @@ handleFindbk labelbk = handler_
 handleRemovebk :: Text -> IO ()
 handleRemovebk labelbk = handler (return . removeBookmark labelbk)
 
-handleRunbk :: Text -> IO ()
-handleRunbk _labelbk = undefined
+_handleRunbk :: Text -> IO ()
+_handleRunbk _labelbk = undefined
 
 mainLoop ::  IO ()
 mainLoop = do
