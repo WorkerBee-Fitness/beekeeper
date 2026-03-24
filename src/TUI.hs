@@ -22,7 +22,26 @@ data BKOption
     = OptAddBK BKType Text Text
     | OptRemoveBK Text
     | OptFindBK Text
+    | OptHelpBK 
+    | OptVersionBK
     deriving (Show)
+
+helpString :: String
+helpString = 
+       "BeeKeeper remembers so you don't have to!\n\n"
+    ++ "Usage:\n\t"++_progName++" [command-line-options]"++"\n\n"
+    ++ "Version:\n\t"++_progName++"-"++_progVersion++"\n\n"
+    ++ "Options:\n"        
+        ++"\tadd    bookmark LABEL=TARGET | add a new bookmark called LABEL that points to TARGET\n"
+        ++"\tadd    alias    LABEL=TARGET | add a new alias called LABEL that points to TARGET\n"
+        ++"\n"
+        ++"\tfind   LABEL                 | returns the TARGET of the bookmark/alias LABEL if it exists\n"
+        ++"\n"
+        ++"\tremove LABEL                 | removes the bookmark/alias called LABEL if it exists\n"
+        ++"\n"
+        ++"\thelp                         | returns this help message\n"
+        ++"\tversion                      | returns the current version"
+
 
 parseBKAssignment :: Text -> Either String (Text,Text)
 parseBKAssignment s = aux $ split (=='=') s
@@ -52,17 +71,30 @@ parseBKFind [label] = Right $ OptFindBK label
 parseBKFind _ = Left $ "invalid number of arguments given to find"
 
 parseOpt :: [Text] -> Either String BKOption
-parseOpt [] = Left $ "help coming soon"
-parseOpt ("add":args) = parseBKAdd args
-parseOpt ("find":args) = parseBKFind args
-parseOpt ["help"] = Left $ "help coming soon"
+parseOpt []              = Left $ "help coming soon"
+parseOpt ["help"]        = Right OptHelpBK
+parseOpt ["version"]     = Right OptVersionBK
+parseOpt ("add":args)    = parseBKAdd args
+parseOpt ("find":args)   = parseBKFind args
 parseOpt ("remove":args) = parseBKRemove args
-parseOpt (s:_) = Left $ "invalid option: "++(unpack s)
+parseOpt ["-v"]          = Right OptVersionBK
+parseOpt ["--version"]   = Right OptVersionBK
+parseOpt ["-h"]          = Right OptHelpBK
+parseOpt ["--help"]      = Right OptHelpBK
+parseOpt (s:_)           = Left $ "invalid option: "++(unpack s)
 
 handleOpt :: BKOption -> IO ()
 handleOpt (OptAddBK ty l t) = handleAddbk ty l t
 handleOpt (OptRemoveBK l)   = handleRemovebk l
 handleOpt (OptFindBK l)     = handleFindbk l
+handleOpt OptHelpBK         = handleHelp
+handleOpt OptVersionBK      = handleVersion
+
+handleHelp :: IO ()
+handleHelp = putStrLn helpString
+
+handleVersion :: IO ()
+handleVersion = putStrLn $ _progName++"-"++_progVersion
 
 handleAddbk :: BKType -> Text -> Text -> IO ()
 handleAddbk ty l t = handleAddbk' ty l t
