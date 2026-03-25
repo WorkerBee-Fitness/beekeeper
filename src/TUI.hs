@@ -12,6 +12,8 @@ import System.Environment (getArgs)
 import System.Process (spawnCommand)
 import BK (addBookmark, Bookmark (..), removeBookmark, findBookmark, handler, handler_, BKType (..), parseBKType)
 import Data.Text (pack, Text, split, unpack)
+import Control.Monad (void)
+import System.IO (hFlush, stdout)
 
 _progName :: String
 _progName = "bk"
@@ -123,13 +125,17 @@ handleRemovebk :: Text -> IO ()
 handleRemovebk labelbk = handler (return . removeBookmark labelbk)
 
 handleRunbk :: Text -> IO ()
-handleRunbk _labelbk = do
-    -- 1. Look up labelbk in the csv file and return its target (if it exists)
-    -- 2. Check to make sure it's an alias.
-    -- 3. If so, print the target before spawning, then use spawnCommand to spawn the target.
-    -- 4. Otherwise, report that it's not an alias.
-    _ <- spawnCommand "cod /tmp/scratch"
-    return ()
+handleRunbk labelbk = handler_ $ \csvContents -> do
+    case findBookmark labelbk csvContents of
+        Nothing -> putStrLn $ "alias not found " ++ (show labelbk)
+        Just b -> 
+            case bkType b of
+                BKBookmark -> putStrLn $ (show labelbk) ++ " is not an alias"
+                BKAlias -> do
+                    let target = unpack . bkTarget $ b
+                    putStrLn $ "running "++(show target)
+                    hFlush stdout
+                    void $ spawnCommand target
 
 mainLoop ::  IO ()
 mainLoop = do

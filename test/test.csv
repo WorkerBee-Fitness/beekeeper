@@ -3,3 +3,4 @@ bookmark,1,2
 alias,Label1,Apple
 bookmark,Label2,Banana
 bookmark,Label3,2
+alias,resolver,code ~/trd/backend/backend.code-workspace
