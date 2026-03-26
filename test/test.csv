@@ -1,6 +1,2 @@
-type,label,target
-bookmark,1,2
-alias,Label1,Apple
-bookmark,Label2,Banana
-bookmark,Label3,2
-alias,resolver,code ~/trd/backend/backend.code-workspace
+type,label,target,created-data,last-used
+alias,resolver,code ~/trd/backend.code-workspace,2026-03-26,2026-03-26

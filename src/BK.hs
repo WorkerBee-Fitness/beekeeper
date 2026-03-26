@@ -3,8 +3,9 @@
 {-# LANGUAGE LinearTypes #-}
 {-# LANGUAGE NoImplicitPrelude #-}
 {-# LANGUAGE QualifiedDo #-}
-{-# LANGUAGE  OverloadedStrings #-}
+{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ViewPatterns #-}
+{-# OPTIONS_GHC -Wno-orphans #-}
 module BK 
     (Bookmark(..),
      BKType(..),  
@@ -28,56 +29,84 @@ import Prelude.Linear
 
 import Prelude
     (($),
-     (.), Either (..), (++), Foldable (..), Eq (..), Maybe)
+     (.), Either (..), Foldable (..), Eq (..), Maybe (..), id, error, undefined, not)
 
 import qualified Control.Functor.Linear as Linear
 import qualified System.IO.Resource.Linear as Linear
 import qualified Data.Unrestricted.Linear as Linear
-import Data.Text (Text, concat, pack, unpack)
+
+import Data.Text (Text, concat, pack)
+import qualified Data.Text as DT 
+
 import Data.ByteString as BS hiding (null)
 import GHC.Generics (Generic)
-import Data.Csv.Incremental (Parser(..),decode, HasHeader (HasHeader))
-import Data.Csv(FromRecord, ToRecord, FromField (..), Field, ToField (..), encodeByName, ToNamedRecord (..), namedRecord, (.=), NamedRecord, Name)
+import Data.Csv.Incremental (decode, HasHeader (HasHeader))
+import qualified Data.Csv.Incremental as CsvInc
+import Data.Csv(FromRecord(..), ToRecord(..), FromField (..), Field, ToField (..), encodeByName, ToNamedRecord (..), namedRecord, (.=), NamedRecord, Name, Parser)
 import qualified Data.Vector as Vec
 
 import qualified WBeeLib.ByteString as WBL
 import qualified WBeeLib.Text as WBL
+import qualified WBeeLib.FileSystem as WBL
+
 import System.Exit (exitFailure, exitSuccess)
 import Control.Monad (Monad(..), return, when)
 import Prelude (print, MonadFail (fail))
 import GHC.IO.IOMode (IOMode(..))
 import qualified Data.Map as Map
+import Prelude ((<>))
+import Data.Bifunctor (Bifunctor(bimap))
+
+import Data.Time.Calendar (Day)
+import Data.Time.Format.ISO8601 (formatParseM, ISO8601 (iso8601Format), Format (formatShowM))
+import qualified WBeeLib.FileSystem as WBL
 
 data BKType = BKAlias 
             | BKBookmark
     deriving (Generic, Show)
 
 instance FromField  BKType where
-    parseField = parseField' . parseBKType . WBL.byteStringToTextUTF8
+    parseField :: Field -> Parser BKType
+    parseField = parseField' . (bimap DT.unpack id) . parseBKType . WBL.byteStringToTextUTF8
         where
             parseField' (Right bt) = return bt
             parseField' (Left err) = fail err
 
 parseBKType 
     :: Text
-    -> Either String BKType
+    -> Either Text BKType
 parseBKType s 
         | s == "alias"    = return BKAlias
         | s == "bookmark" = return BKBookmark
-        | otherwise       = Left $ (Data.Text.unpack s) ++ " is not a valid bookmark type"
+        | otherwise       = Left $ s <> " is not a valid bookmark type"
 
 instance ToField BKType where
   toField :: BKType -> Field
   toField BKAlias = "alias"
   toField BKBookmark = "bookmark"
 
-instance FromRecord BKType
-instance ToRecord   BKType
+instance FromField Day where
+    parseField :: Field -> Parser Day
+    parseField s = 
+        case formatParseM iso8601Format (WBL.byteStringToStringUTF8 s) of
+            Nothing -> _fail $ s <> " is not a valid ISO8601 date"
+            Just day -> return day
+        where
+            _fail = fail . WBL.byteStringToStringUTF8
+
+instance ToField Day where
+    toField :: Day -> Field
+    toField day = 
+        case formatShowM iso8601Format day of
+            Nothing -> error "[toField]: failed to pretty print day"
+            Just s -> WBL.stringUTF8ToByteString s
 
 data Bookmark = Bookmark {
-    bkType   :: !BKType,
-    bkLabel  :: !Text,    
-    bkTarget :: !Text
+    bkType     :: !BKType,
+    bkLabel    :: !Text,    
+    bkTarget   :: !Text,
+    bkCreated  :: !Day,
+    bkLastUsed :: !Day
 } deriving (Generic, Show)
 
 instance FromRecord Bookmark
@@ -87,14 +116,18 @@ header :: Vec.Vector Name
 header = Vec.fromList 
     ["type",
      "label",
-     "target"]
+     "target",
+     "created-data",
+     "last-used"]
 
 instance ToNamedRecord Bookmark where
     toNamedRecord :: Bookmark -> NamedRecord
     toNamedRecord b = namedRecord [
         "type" .= bkType b, 
         "label" .= bkLabel b, 
-        "target" .= bkTarget b]
+        "target" .= bkTarget b,
+        "created-data" .= bkCreated b,
+        "last-used" .= bkLastUsed b]
 
 _logDebug 
     :: String 
@@ -105,9 +138,9 @@ _logDebug !s = Linear.do
     Linear.release r
 
 feedCSVFile 
-    :: (BS.ByteString -> Parser Bookmark)
+    :: (BS.ByteString -> CsvInc.Parser Bookmark)
     -> Linear.Handle %1
-    -> Linear.RIO (Linear.Ur (Parser Bookmark), Linear.Handle)
+    -> Linear.RIO (Linear.Ur (CsvInc.Parser Bookmark), Linear.Handle)
 feedCSVFile parserFam csvFile = Linear.do
     (Linear.Ur isEOF, csvFile') <- Linear.hIsEOF csvFile
     if isEOF
@@ -118,41 +151,41 @@ feedCSVFile parserFam csvFile = Linear.do
         let parser = parserFam line'
         Linear.return (Linear.Ur parser,csvFile'')
 
-updateAcc :: ([String], Map.Map Text Bookmark)
+updateAcc :: ([Text], Map.Map Text Bookmark)
           -> [Either String Bookmark]
-          -> ([String], Map.Map Text Bookmark)
+          -> ([Text], Map.Map Text Bookmark)
 updateAcc acc = Prelude.foldl upAcc acc
     where
-        upAcc (errs,bkMap) (Left errMsg)          = (errs++[errMsg],bkMap)
-        upAcc (errs,bkMap) (Right b) = (errs,Map.insert (bkLabel b) b bkMap)
+        upAcc (errs,bkMap) (Left errMsg) = (errs <> [DT.pack errMsg],bkMap)
+        upAcc (errs,bkMap) (Right b)     = (errs,Map.insert (bkLabel b) b bkMap)
 
-loop :: ([String], Map.Map Text Bookmark)
+loop :: ([Text], Map.Map Text Bookmark)
      -> Linear.Handle %1
-     -> Parser Bookmark 
-     -> Linear.RIO (Linear.Ur ([String], Map.Map Text Bookmark))
-loop acc csvFile (Fail _ errMsg)   
+     -> CsvInc.Parser Bookmark 
+     -> Linear.RIO (Linear.Ur ([Text], Map.Map Text Bookmark))
+loop acc csvFile (CsvInc.Fail _ errMsg)   
     = Linear.do 
         Linear.release csvFile 
         Linear.return (Linear.Ur (updateAcc acc [Left errMsg]))
 
-loop acc csvFile (Many rs parserFam) 
+loop acc csvFile (CsvInc.Many rs parserFam) 
     = Linear.do         
         (Linear.Ur parser,csvFile'') <- feedCSVFile parserFam csvFile
         loop (updateAcc acc rs) csvFile'' parser                                       
 
-loop acc csvFile (Done rs) 
+loop acc csvFile (CsvInc.Done rs) 
     = Linear.do     
         Linear.release csvFile 
         Linear.return (Linear.Ur (updateAcc acc rs))
 
 readCSVFile 
     :: FilePath 
-    -> IO ([String], Map.Map Text Bookmark)
+    -> IO ([Text], Map.Map Text Bookmark)
 readCSVFile csvFilePath = Linear.run $ readCSVFile' 
     where
         readCSVFile' 
-            :: Linear.RIO (Linear.Ur ([String], Map.Map Text Bookmark))
-        readCSVFile' = Linear.do
+            :: Linear.RIO (Linear.Ur ([Text], Map.Map Text Bookmark))
+        readCSVFile' = Linear.do            
             csvFile <- Linear.openFile csvFilePath ReadMode
             (Linear.Ur contents) <- loop ([],Map.empty) csvFile (decode HasHeader) 
             Linear.return (Linear.Ur contents)
@@ -195,11 +228,24 @@ handler_ handle = _handler False (\m -> handle m >> return m)
 handler :: (Map.Map Text Bookmark  -> IO (Map.Map Text Bookmark)) -> IO ()
 handler = _handler True
 
+initializeWorkDir :: IO FilePath
+initializeWorkDir = do 
+    homeDir <- WBL.getHomeDirectory
+    let wdir = homeDir <> "/.bk"
+    let bookmarkCSVFile = wdir <> "/bk-bookmarks.csv"
+    WBL.createDirectoryIfMissing False wdir
+    bookmarkCSVFileExists <- WBL.doesFileExist bookmarkCSVFile
+    when (not bookmarkCSVFileExists) $ 
+        writeCSVFile bookmarkCSVFile Map.empty
+    return wdir
+
 _handler :: Bool -> (Map.Map Text Bookmark  -> IO (Map.Map Text Bookmark)) -> IO ()
-_handler writeMode handle = 
-    do (errs,csvContents) <- readCSVFile "test/test.csv"
+_handler writeMode action = 
+    do bookmarkCSVFile <- initializeWorkDir     
+       (errs,csvContents) <- readCSVFile bookmarkCSVFile       
        if null errs
-       then do csvContents' <- handle csvContents                                       
-               when writeMode $ writeCSVFile "test/test.csv" csvContents'
+       then do csvContents' <- action csvContents                                       
+               print writeMode
+               when writeMode $ writeCSVFile bookmarkCSVFile csvContents'
                exitSuccess
        else print errs >> exitFailure

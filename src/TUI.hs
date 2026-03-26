@@ -13,6 +13,9 @@ import BK (addBookmark, Bookmark (..), removeBookmark, findBookmark, handler, ha
 import Data.Text (pack, Text, split, unpack)
 import Control.Monad (void)
 import System.IO (hFlush, stdout)
+import WBeeLib.System.IO (putStrLnStdErr)
+import Data.Time.Calendar (Day)
+import Data.Time (getCurrentTime, UTCTime (..))
 
 _progName :: String
 _progName = "bk"
@@ -32,7 +35,10 @@ data BKOption
 helpString :: String
 helpString = 
        "BeeKeeper remembers so you don't have to!\n\n"
-    ++ "Usage:\n\t"++_progName++" [command-line-options]"++"\n\n"
+    ++ "Usage:\n"
+        ++"\t"++_progName++"                            | see recent activity\n"
+        ++"\t"++_progName++" LABEL                      | runs the alias LABEL if it exists\n"
+        ++"\t"++_progName++" [command-line-options]     | run a command-line-option\n\n"
     ++ "Version:\n\t"++_progName++"-"++_progVersion++"\n\n"
     ++ "Options:\n"        
         ++"\tadd    bookmark LABEL=TARGET | add a new bookmark called LABEL that points to TARGET\n"
@@ -46,38 +52,38 @@ helpString =
         ++"\thelp                         | returns this help message\n"
         ++"\tversion                      | returns the current version"
 
-parseBKAssignment :: Text -> Either String (Text,Text)
+parseBKAssignment :: Text -> Either Text (Text,Text)
 parseBKAssignment s = aux $ split (=='=') s
     where
-        aux :: [Text] -> Either String (Text,Text)       
+        aux :: [Text] -> Either Text (Text,Text)       
         aux [l,t] = Right $ (l,t)
-        aux _     = Left $ "invalid bookmark assignment: "++unpack s
+        aux _     = Left $ "invalid bookmark assignment: " <> s
 
-parseBKAdd :: [Text] -> Either String BKOption
+parseBKAdd :: [Text] -> Either Text BKOption
 parseBKAdd [bkTypeStr,bkAssignStr] 
     = case (_bkType,_bkAssign) of
         (Right ty,Right (l,tar)) -> Right $ OptAddBK ty l tar
         (Left err1, Right _) -> Left err1
         (Right _, Left err2) -> Left err2
-        (Left err1, Left err2) -> Left $ err1 ++ "\n" ++ err2
+        (Left err1, Left err2) -> Left $ err1 <> "\n" <> err2
     where
         _bkType = parseBKType bkTypeStr
         _bkAssign = parseBKAssignment bkAssignStr
 parseBKAdd _ = Left $ "invalid number of arguments given to add"
 
-parseBKRemove :: [Text] -> Either String BKOption
+parseBKRemove :: [Text] -> Either Text BKOption
 parseBKRemove [label] = Right $ OptRemoveBK label
 parseBKRemove _ = Left $ "invalid number of arguments given to remove"
 
-parseBKFind :: [Text] -> Either String BKOption
+parseBKFind :: [Text] -> Either Text BKOption
 parseBKFind [label] = Right $ OptFindBK label
 parseBKFind _ = Left $ "invalid number of arguments given to find"
 
-parseBKRun :: [Text] -> Either String BKOption
+parseBKRun :: [Text] -> Either Text BKOption
 parseBKRun [label] = Right $ OptRunBK label
 parseBKRun _       = Left $ "invalid number of arguments given to run"
 
-parseOpt :: [Text] -> Either String BKOption
+parseOpt :: [Text] -> Either Text BKOption
 parseOpt []              = Right OptHelpBK
 parseOpt ["help"]        = Right OptHelpBK
 parseOpt ["version"]     = Right OptVersionBK
@@ -90,7 +96,7 @@ parseOpt ["--version"]   = Right OptVersionBK
 parseOpt ["-h"]          = Right OptHelpBK
 parseOpt ["--help"]      = Right OptHelpBK
 parseOpt args@[_]        = parseBKRun args
-parseOpt (s:_)           = Left $ "invalid option: "++(unpack s)
+parseOpt (s:_)           = Left $ "invalid option: " <> s
 
 handleOpt :: BKOption -> IO ()
 handleOpt (OptAddBK ty l t) = handleAddbk ty l t
@@ -107,17 +113,30 @@ handleVersion :: IO ()
 handleVersion = putStrLn $ _progName++"-"++_progVersion
 
 handleAddbk :: BKType -> Text -> Text -> IO ()
-handleAddbk ty l t = handleAddbk' ty l t
+handleAddbk ty l t = do
+    createdDay <- today
+    handleAddbk' ty l t createdDay
     where
-        handleAddbk' :: BKType -> Text -> Text -> IO ()
-        handleAddbk' typebk labelbk targetbk 
-            = let b = Bookmark { bkType = typebk, bkLabel = labelbk, bkTarget = targetbk } 
-               in handler (return . addBookmark b)
+        today :: IO Day
+        today = do
+            currentUTCTime <- getCurrentTime
+            return . utctDay $ currentUTCTime
 
+        handleAddbk' :: BKType -> Text -> Text -> Day -> IO ()
+        handleAddbk' typebk labelbk targetbk createdbk
+            = let b = Bookmark { 
+                        bkType = typebk, 
+                        bkLabel = labelbk, 
+                        bkTarget = targetbk, 
+                        bkCreated = createdbk, 
+                        bkLastUsed = createdbk 
+                      } 
+               in handler (return . addBookmark b)
+ 
 handleFindbk :: Text -> IO ()
 handleFindbk labelbk = handler_
     (\csvContents -> case findBookmark labelbk csvContents of
-                        Nothing -> putStrLn $ "bookmark not found " ++ (show labelbk)
+                        Nothing -> putStrLnStdErr $ "bookmark not found \"" <> labelbk <> "\""
                         Just b ->  print b)
 
 handleRemovebk :: Text -> IO ()
@@ -126,10 +145,10 @@ handleRemovebk labelbk = handler (return . removeBookmark labelbk)
 handleRunbk :: Text -> IO ()
 handleRunbk labelbk = handler_ $ \csvContents -> do
     case findBookmark labelbk csvContents of
-        Nothing -> putStrLn $ "alias not found " ++ (show labelbk)
+        Nothing -> putStrLnStdErr $ "alias not found " <> labelbk
         Just b -> 
             case bkType b of
-                BKBookmark -> putStrLn $ (show labelbk) ++ " is not an alias"
+                BKBookmark -> putStrLnStdErr $ labelbk <> " is not an alias"
                 BKAlias -> do
                     let target = unpack . bkTarget $ b
                     putStrLn $ "running "++(show target)
@@ -141,4 +160,4 @@ mainLoop = do
     s <- getArgs
     case parseOpt $ map pack s of
         Right opt -> handleOpt opt
-        Left err -> error err
+        Left err -> putStrLnStdErr err
