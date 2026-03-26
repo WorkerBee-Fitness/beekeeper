@@ -9,13 +9,14 @@ module TUI (mainLoop) where
 
 import System.Environment (getArgs)
 import System.Process (spawnCommand)
-import BK (addBookmark, Bookmark (..), removeBookmark, findBookmark, handler, handler_, BKType (..), parseBKType)
+import BK (addBookmark, Bookmark (..), removeBookmark, findBookmark, handler, handler_, BKType (..), parseBKType, recentBookmarks)
 import Data.Text (pack, Text, split, unpack)
 import Control.Monad (void)
 import System.IO (hFlush, stdout)
 import WBeeLib.System.IO (putStrLnStdErr)
 import Data.Time.Calendar (Day)
 import Data.Time (getCurrentTime, UTCTime (..))
+import qualified Data.Map as Map
 
 _progName :: String
 _progName = "bk"
@@ -28,6 +29,7 @@ data BKOption
     | OptRunBK Text
     | OptRemoveBK Text
     | OptFindBK Text
+    | OptRecentsBK
     | OptHelpBK 
     | OptVersionBK
     deriving (Show)
@@ -84,7 +86,7 @@ parseBKRun [label] = Right $ OptRunBK label
 parseBKRun _       = Left $ "invalid number of arguments given to run"
 
 parseOpt :: [Text] -> Either Text BKOption
-parseOpt []              = Right OptHelpBK
+parseOpt []              = Right OptRecentsBK
 parseOpt ["help"]        = Right OptHelpBK
 parseOpt ["version"]     = Right OptVersionBK
 parseOpt ("add":args)    = parseBKAdd args
@@ -99,6 +101,7 @@ parseOpt args@[_]        = parseBKRun args
 parseOpt (s:_)           = Left $ "invalid option: " <> s
 
 handleOpt :: BKOption -> IO ()
+handleOpt OptRecentsBK      = handleRecentsbk
 handleOpt (OptAddBK ty l t) = handleAddbk ty l t
 handleOpt (OptFindBK l)     = handleFindbk l
 handleOpt (OptRunBK l)      = handleRunbk l
@@ -154,6 +157,13 @@ handleRunbk labelbk = handler_ $ \csvContents -> do
                     putStrLn $ "running "++(show target)
                     hFlush stdout
                     void $ spawnCommand target
+
+handleRecentsbk :: IO ()
+handleRecentsbk = handler_
+    (\csvContents -> 
+        do today <- getCurrentTime
+           let recBks = recentBookmarks (utctDay today) csvContents
+           foldl (\r bk -> print bk >> r) (return ()) recBks)
 
 mainLoop ::  IO ()
 mainLoop = do

@@ -16,7 +16,8 @@ module BK
      removeBookmark,
      findBookmark,
      handler,
-     handler_) where
+     handler_,
+     recentBookmarks) where
 
 import Prelude.Linear
     ( Show,
@@ -29,7 +30,7 @@ import Prelude.Linear
 
 import Prelude
     (($),
-     (.), Either (..), Foldable (..), Eq (..), Maybe (..), id, error, undefined, not)
+     (.), Either (..), Foldable (..), Eq (..), Maybe (..), id, error, not, (<=), (&&))
 
 import qualified Control.Functor.Linear as Linear
 import qualified System.IO.Resource.Linear as Linear
@@ -57,9 +58,8 @@ import qualified Data.Map as Map
 import Prelude ((<>))
 import Data.Bifunctor (Bifunctor(bimap))
 
-import Data.Time.Calendar (Day)
+import Data.Time.Calendar (Day, addDays)
 import Data.Time.Format.ISO8601 (formatParseM, ISO8601 (iso8601Format), Format (formatShowM))
-import qualified WBeeLib.FileSystem as WBL
 
 data BKType = BKAlias 
             | BKBookmark
@@ -222,6 +222,15 @@ findBookmark :: Text
              -> Prelude.Maybe Bookmark
 findBookmark label = Map.lookup label
 
+recentBookmarks     :: Day
+                    -> Map.Map Text Bookmark
+                    -> Map.Map Text Bookmark
+recentBookmarks today = Map.filter recentBookmark 
+    where
+        recentBookmark :: Bookmark -> Bool
+        recentBookmark (Bookmark _ _ _ _ lastUsedDay) = 
+            addDays (-10) today <= lastUsedDay && lastUsedDay <= today
+
 handler_ :: (Map.Map Text Bookmark  -> IO ()) -> IO ()
 handler_ handle = _handler False (\m -> handle m >> return m)
 
@@ -237,7 +246,7 @@ initializeWorkDir = do
     bookmarkCSVFileExists <- WBL.doesFileExist bookmarkCSVFile
     when (not bookmarkCSVFileExists) $ 
         writeCSVFile bookmarkCSVFile Map.empty
-    return wdir
+    return bookmarkCSVFile
 
 _handler :: Bool -> (Map.Map Text Bookmark  -> IO (Map.Map Text Bookmark)) -> IO ()
 _handler writeMode action = 
@@ -245,7 +254,6 @@ _handler writeMode action =
        (errs,csvContents) <- readCSVFile bookmarkCSVFile       
        if null errs
        then do csvContents' <- action csvContents                                       
-               print writeMode
                when writeMode $ writeCSVFile bookmarkCSVFile csvContents'
                exitSuccess
        else print errs >> exitFailure
