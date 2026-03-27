@@ -9,13 +9,16 @@ module TUI (mainLoop) where
 
 import System.Environment (getArgs)
 import System.Process (spawnCommand)
-import BK (addBookmark, Bookmark (..), removeBookmark, findBookmark, handler, handler_, BKType (..), parseBKType, recentBookmarks)
+import BK (addBookmark, Bookmark (..), removeBookmark, findBookmark, handler, handler_, BKType (..), parseBKType, recentBookmarks, isAlias, showBKMap, maxOffsetBKMap)
 import Data.Text (pack, Text, split, unpack)
 import Control.Monad (void)
 import System.IO (hFlush, stdout)
 import WBeeLib.System.IO (putStrLnStdErr)
 import Data.Time.Calendar (Day)
 import Data.Time (getCurrentTime, UTCTime (..))
+import qualified Data.Text as DT
+import Data.List (sortBy, maximumBy)
+import Data.Ord (Down(Down))
 
 _progName :: String
 _progName = "bk"
@@ -161,8 +164,10 @@ handleRecentsbk :: IO ()
 handleRecentsbk = handler_
     (\csvContents -> 
         do today <- getCurrentTime
-           let recBks = recentBookmarks (utctDay today) csvContents
-           foldl (\r bk -> print bk >> r) (return ()) recBks)
+           let maxOffset = maxOffsetBKMap csvContents
+           let (recAliases,recBks) = recentBookmarks (utctDay today) csvContents
+           putStrLn . DT.unpack  $ showBKMap maxOffset recAliases
+           putStrLn . DT.unpack  $ showBKMap maxOffset recBks)
 
 mainLoop ::  IO ()
 mainLoop = do

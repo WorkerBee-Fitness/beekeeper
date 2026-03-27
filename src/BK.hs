@@ -17,20 +17,23 @@ module BK
      findBookmark,
      handler,
      handler_,
-     recentBookmarks) where
+     recentBookmarks,
+     isAlias,
+     showBKMap,
+     maxOffsetBKMap) where
 
 import Prelude.Linear
-    ( Show,
+    ( Show(..),
       Bool(False, True),
       String,
       IO,
       Either,
       putStrLn,
-      FilePath, otherwise )
+      FilePath, otherwise, Ordering )
 
 import Prelude
     (($),
-     (.), Either (..), Foldable (..), Eq (..), Maybe (..), id, error, not, (<=), (&&))
+     (.), Either (..), Foldable (..), Eq (..), Maybe (..), id, error, not, (<=), (&&), Int, Ord (..), undefined, Num (..))
 
 import qualified Control.Functor.Linear as Linear
 import qualified System.IO.Resource.Linear as Linear
@@ -39,7 +42,7 @@ import qualified Data.Unrestricted.Linear as Linear
 import Data.Text (Text, concat, pack)
 import qualified Data.Text as DT 
 
-import Data.ByteString as BS hiding (null)
+import Data.ByteString as BS hiding (foldl, null)
 import GHC.Generics (Generic)
 import Data.Csv.Incremental (decode, HasHeader (HasHeader))
 import qualified Data.Csv.Incremental as CsvInc
@@ -60,10 +63,30 @@ import Data.Bifunctor (Bifunctor(bimap))
 
 import Data.Time.Calendar (Day, addDays)
 import Data.Time.Format.ISO8601 (formatParseM, ISO8601 (iso8601Format), Format (formatShowM))
+import Data.List (sortBy, head)
+import Data.Ord (Down(Down))
+import Data.Foldable (maximumBy)
 
 data BKType = BKAlias 
             | BKBookmark
-    deriving (Generic, Show)
+    deriving (Generic)
+
+showBKType :: BKType -> Text
+showBKType BKAlias    = "alias"
+showBKType BKBookmark = "bookmark"
+
+-- | The number of spaces needed to properly space `BKType`'s when pretty
+-- printing bookmarks.
+--
+-- This is equivalent to `length (showBKType bktype) + 1`.
+offsetBKType :: BKType -> Int
+offsetBKType BKAlias    = 4
+offsetBKType BKBookmark = 1
+
+instance Show BKType where
+    show :: BKType -> String
+    show BKAlias = "alias"
+    show BKBookmark = "bookmark"
 
 instance FromField  BKType where
     parseField :: Field -> Parser BKType
@@ -107,7 +130,12 @@ data Bookmark = Bookmark {
     bkTarget   :: !Text,
     bkCreated  :: !Day,
     bkLastUsed :: !Day
-} deriving (Generic, Show)
+} deriving (Generic)
+
+instance Show Bookmark where
+    show :: Bookmark -> String  
+    show (Bookmark bkT bkL bkTar _ _) 
+        = (show bkT) <> " " <> (DT.unpack bkL) <> "=" <> (show bkTar) 
 
 instance FromRecord Bookmark
 instance ToRecord   Bookmark
@@ -128,6 +156,37 @@ instance ToNamedRecord Bookmark where
         "target" .= bkTarget b,
         "created-data" .= bkCreated b,
         "last-used" .= bkLastUsed b]
+
+type BKMap = Map.Map Text Bookmark
+
+maxBkByLabel :: Bookmark -> Bookmark -> Ordering
+maxBkByLabel bk1 bk2 = (DT.length label1) `compare` (DT.length label2)
+    where
+        label1 = bkLabel bk1
+        label2 = bkLabel bk2
+
+maxOffsetBKMap :: BKMap -> Int
+maxOffsetBKMap bkMap = 
+    DT.length . bkLabel $ 
+        maximumBy maxBkByLabel  bkMap
+
+labelOffset :: Int -> Text -> Int
+labelOffset maxOffset label = maxOffset - (DT.length label)
+
+showBKAssignment :: Int -> BKType -> Text -> Text -> Text
+showBKAssignment maxOffset bktype label target = 
+       (showBKType bktype) <> DT.replicate (offsetBKType bktype) " "
+    <> label <> DT.replicate (labelOffset maxOffset label) " " <> " = " <> (DT.show target)
+
+showBKMap :: Int -> BKMap -> Text
+showBKMap maxOffset bkMap = _showBKMap maxOffset $ Map.assocs bkMap
+
+_showBKMap :: Int -> [(Text,Bookmark)] -> Text
+_showBKMap _ [] = ""
+_showBKMap maxOffset [(label,bk)] = showBKAssignment maxOffset (bkType bk) label (bkTarget bk)
+_showBKMap maxOffset ((label,bk):bks) 
+     = showBKAssignment maxOffset (bkType bk) label (bkTarget bk) <> "\n"
+    <> _showBKMap maxOffset bks
 
 _logDebug 
     :: String 
@@ -151,18 +210,18 @@ feedCSVFile parserFam csvFile = Linear.do
         let parser = parserFam line'
         Linear.return (Linear.Ur parser,csvFile'')
 
-updateAcc :: ([Text], Map.Map Text Bookmark)
+updateAcc :: ([Text], BKMap)
           -> [Either String Bookmark]
-          -> ([Text], Map.Map Text Bookmark)
+          -> ([Text], BKMap)
 updateAcc acc = Prelude.foldl upAcc acc
     where
         upAcc (errs,bkMap) (Left errMsg) = (errs <> [DT.pack errMsg],bkMap)
         upAcc (errs,bkMap) (Right b)     = (errs,Map.insert (bkLabel b) b bkMap)
 
-loop :: ([Text], Map.Map Text Bookmark)
+loop :: ([Text], BKMap)
      -> Linear.Handle %1
      -> CsvInc.Parser Bookmark 
-     -> Linear.RIO (Linear.Ur ([Text], Map.Map Text Bookmark))
+     -> Linear.RIO (Linear.Ur ([Text], BKMap))
 loop acc csvFile (CsvInc.Fail _ errMsg)   
     = Linear.do 
         Linear.release csvFile 
@@ -180,11 +239,11 @@ loop acc csvFile (CsvInc.Done rs)
 
 readCSVFile 
     :: FilePath 
-    -> IO ([Text], Map.Map Text Bookmark)
+    -> IO ([Text], BKMap)
 readCSVFile csvFilePath = Linear.run $ readCSVFile' 
     where
         readCSVFile' 
-            :: Linear.RIO (Linear.Ur ([Text], Map.Map Text Bookmark))
+            :: Linear.RIO (Linear.Ur ([Text], BKMap))
         readCSVFile' = Linear.do            
             csvFile <- Linear.openFile csvFilePath ReadMode
             (Linear.Ur contents) <- loop ([],Map.empty) csvFile (decode HasHeader) 
@@ -192,7 +251,7 @@ readCSVFile csvFilePath = Linear.run $ readCSVFile'
 
 writeCSVFile
     :: FilePath
-    -> Map.Map Text Bookmark
+    -> BKMap
     -> IO ()
 writeCSVFile csvFilePath bkMap = Linear.run writeCSVFile' 
     where        
@@ -208,33 +267,49 @@ writeCSVFile csvFilePath bkMap = Linear.run writeCSVFile'
             Linear.return (Linear.Ur ())
 
 addBookmark :: Bookmark
-            -> Map.Map Text Bookmark
-            -> Map.Map Text Bookmark
+            -> BKMap
+            -> BKMap
 addBookmark b bkMap = Map.insert (bkLabel b) b bkMap
 
 removeBookmark :: Text
-               -> Map.Map Text Bookmark
-               -> Map.Map Text Bookmark
+               -> BKMap
+               -> BKMap
 removeBookmark label = Map.delete label
 
 findBookmark :: Text
-             -> Map.Map Text Bookmark
+             -> BKMap
              -> Prelude.Maybe Bookmark
 findBookmark label = Map.lookup label
 
-recentBookmarks :: Day
-                -> Map.Map Text Bookmark
-                -> Map.Map Text Bookmark
-recentBookmarks today = Map.filter recentBookmark 
+partitionBKMap
+    :: (Bookmark -> Bool)
+    -> BKMap
+    -> (BKMap,BKMap)
+partitionBKMap pick = foldl which (Map.empty,Map.empty)
     where
+        which :: (BKMap,BKMap) 
+              -> Bookmark 
+              -> (BKMap,BKMap)
+        which (p1,p2) bk | pick bk   = (Map.insert (bkLabel bk) bk p1,p2)
+        which (p1,p2) bk | otherwise = (p1,Map.insert (bkLabel bk) bk p2)
+
+isAlias :: Bookmark -> Bool
+isAlias (Bookmark BKAlias _ _ _ _) = True
+isAlias _ = False
+
+recentBookmarks :: Day
+                -> BKMap
+                -> (BKMap,BKMap)
+recentBookmarks today bkMap = partitionBKMap isAlias $ Map.filter recentBookmark bkMap
+    where                        
         recentBookmark :: Bookmark -> Bool
         recentBookmark (Bookmark _ _ _ _ lastUsedDay) = 
             addDays (-10) today <= lastUsedDay && lastUsedDay <= today
 
-handler_ :: (Map.Map Text Bookmark  -> IO ()) -> IO ()
+handler_ :: (BKMap  -> IO ()) -> IO ()
 handler_ handle = _handler False (\m -> handle m >> return m)
 
-handler :: (Map.Map Text Bookmark  -> IO (Map.Map Text Bookmark)) -> IO ()
+handler :: (BKMap  -> IO BKMap) -> IO ()
 handler = _handler True
 
 initializeWorkDir :: IO FilePath
@@ -248,7 +323,8 @@ initializeWorkDir = do
         writeCSVFile bookmarkCSVFile Map.empty
     return bookmarkCSVFile
 
-_handler :: Bool -> (Map.Map Text Bookmark  -> IO (Map.Map Text Bookmark)) -> IO ()
+-- Change (BKMap -> IO BKMap) to ((Int,BKMap) -> IO BKMap).
+_handler :: Bool -> (BKMap  -> IO BKMap) -> IO ()
 _handler writeMode action = 
     do bookmarkCSVFile <- initializeWorkDir     
        (errs,csvContents) <- readCSVFile bookmarkCSVFile       
