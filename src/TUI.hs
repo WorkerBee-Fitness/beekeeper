@@ -36,6 +36,8 @@ import           BK                 (Bookmark (..),
                                      filterBKMap, 
                                      isAlias, 
                                      isBookmark)
+import WBeeLib.FileSystem (FileSystemMonad(getHomeDirectory))
+import System.Exit (exitFailure)
 
 _progName :: String
 _progName = "bk"
@@ -100,11 +102,11 @@ parseBKAdd _ = Left $ "invalid number of arguments given to add"
 
 parseBKRemove :: [Text] -> Either Text BKOption
 parseBKRemove [label] = Right $ OptRemoveBK label
-parseBKRemove _ = Left $ "invalid number of arguments given to remove"
+parseBKRemove _       = Left  $ "invalid number of arguments given to remove"
 
 parseBKFind :: [Text] -> Either Text BKOption
 parseBKFind [label] = Right $ OptFindBK label
-parseBKFind _ = Left $ "invalid number of arguments given to find"
+parseBKFind _       = Left  $ "invalid number of arguments given to find"
 
 parseBKRun :: [Text] -> Either Text BKOption
 parseBKRun [label] = Right $ OptRunBK label
@@ -166,9 +168,14 @@ handleAddbk ty l t = do
                         bkLastUsed = createdbk 
                       } 
                in handler $ \csvContents -> do
-                    let newMap = addBookmark b csvContents
-                    putStrLn $ "created " <> DT.unpack (showBKType typebk)  <> " " <> show (DT.unpack labelbk)
-                    return newMap
+                    homedir <- getHomeDirectory
+                    either 
+                        (\errMsg -> do putStrLnStdErr errMsg
+                                       exitFailure)
+                        (\updatedMap -> 
+                            do putStrLn $ "created " <> DT.unpack (showBKType typebk)  <> " " <> show (DT.unpack labelbk)
+                               return updatedMap)
+                        $ addBookmark b homedir csvContents   
 
 handleFindbk :: Text -> IO ()
 handleFindbk labelbk = handler_
@@ -186,10 +193,10 @@ handleRemovebk labelbk = handler $
 handleRunbk :: Text -> IO ()
 handleRunbk labelbk = handler_ $ \csvContents -> do
     case findBookmark labelbk csvContents of
-        Nothing -> putStrLnStdErr $ "alias not found " <> DT.show labelbk
+        Nothing -> putStrLnStdErr $ "bookmark not found " <> DT.show labelbk
         Just b -> 
             case bkType b of
-                BKBookmark -> putStrLnStdErr $ (DT.show labelbk) <> " is not an alias"
+                BKBookmark -> putStrLn . DT.unpack . bkTarget $ b
                 BKAlias -> do
                     let target = DT.unpack . bkTarget $ b
                     putStrLn $ "running "++(show target)
@@ -202,6 +209,7 @@ handleRecentsbk = handler_
         do today <- getCurrentTime
            let maxLabelOffset = maxOffsetBKMap csvContents
            let (recAliases,recBks) = recentBookmarks (utctDay today) csvContents
+           --TODO: Need to pull this out into a function def:
            putStrLn . DT.unpack  $ showBKMap maxLabelOffset recAliases
            putStrLn . DT.unpack  $ showBKMap maxLabelOffset recBks)
 
@@ -214,7 +222,7 @@ handleListBookmarks mbkType = handler_ $
     where
         pred :: Maybe BKType -> Bookmark -> Bool
         pred Nothing _ = True
-        pred (Just BKAlias) bk = isAlias bk
+        pred (Just BKAlias) bk    = isAlias bk
         pred (Just BKBookmark) bk = isBookmark bk
 
 mainLoop ::  IO ()

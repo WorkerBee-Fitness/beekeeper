@@ -41,6 +41,7 @@ packages:
 #   commit: e7b331f14bcffb8367cd58fbfc8b40ec7642100a
 #
 extra-deps:
+- filepath-1.5.4.0
 - linear-base-0.7.0
 - cassava-0.5.4.1
 - data-default-class-0.1.2.2

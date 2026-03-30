@@ -5,6 +5,13 @@
 
 packages:
 - completed:
+    hackage: filepath-1.5.4.0@sha256:1497c2630af2dd41397905ff0dff79f842bd80a139d7c5bfba3789fc3caef02c,5144
+    pantry-tree:
+      sha256: 80f5c242a0e7d1ce2bc7d7ff83d312052d37a87856529ba7878b34bdc6a97fbc
+      size: 2274
+  original:
+    hackage: filepath-1.5.4.0
+- completed:
     hackage: linear-base-0.7.0@sha256:c4162da64e0ccbb21a7eecdbb945d6de61075d0a304c42039faf437f28554982,7339
     pantry-tree:
       sha256: ffb9225d59aca0e662c5608a1a57c576f2d9b42bd3d290c21b28f9eff202afb8

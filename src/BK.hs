@@ -6,6 +6,7 @@
 {-# LANGUAGE    OverloadedStrings #-}
 {-# LANGUAGE    ViewPatterns      #-}
 {-# OPTIONS_GHC -Wno-orphans      #-}
+{-# OPTIONS_GHC -Wno-unused-top-binds #-}
 module BK 
     (Bookmark(..),
      BKType(..),  
@@ -30,28 +31,28 @@ import Prelude.Linear           (Show(..),
                                  Bool(..),
                                  String,
                                  IO,
-                                 Either,                             
-                                 FilePath, 
+                                 Either,
+                                 FilePath,
                                  putStrLn,
                                  otherwise)
-import Prelude                  (Either (..), 
-                                 Foldable (..), 
-                                 Eq (..), 
-                                 Maybe (..), 
-                                 Int, 
+import Prelude                  (Either (..),
+                                 Foldable (..),
+                                 Eq (..),
+                                 Maybe (..),
+                                 Int,
                                  Ord (..),
-                                 Num (..), 
+                                 Num (..),
                                  MonadFail (fail),
                                  ($),
-                                 (.),                              
-                                 id, 
-                                 error, 
-                                 not, 
-                                 (<=), 
-                                 (&&),                              
+                                 (.),
+                                 id,
+                                 error,
+                                 not,
+                                 (<=),
+                                 (&&),
                                  map,
                                  (<>),
-                                 print)
+                                 print, undefined)
 import GHC.Generics             (Generic)
 import Data.Text                (Text, 
                                  concat, 
@@ -70,6 +71,10 @@ import Data.Csv                 (FromRecord(..),
                                  encodeByName)
 import System.Exit              (exitFailure, 
                                  exitSuccess)
+import System.FilePath          (isValid,
+                                 isAbsolute,
+                                 normalise,
+                                 dropTrailingPathSeparator)
 import Control.Monad            (Monad(..), 
                                  return, 
                                  when)
@@ -94,6 +99,9 @@ import qualified Data.Map                  as Map
 import qualified WBeeLib.ByteString        as WBL
 import qualified WBeeLib.Text              as WBL
 import qualified WBeeLib.FileSystem        as WBL
+
+undefined :: a
+undefined = Prelude.undefined
 
 data BKType = BKAlias 
             | BKBookmark
@@ -167,6 +175,56 @@ instance Show Bookmark where
 
 instance FromRecord Bookmark
 instance ToRecord   Bookmark
+
+updateBookmarkType :: Bookmark -> BKType -> Bookmark
+updateBookmarkType (Bookmark _ bklabel bktarget bkcreated bklastused) bktype
+    = Bookmark { 
+        bkType     = bktype,          
+        bkLabel    = bklabel, 
+        bkTarget   = bktarget, 
+        bkCreated  = bkcreated, 
+        bkLastUsed = bklastused 
+    }
+
+updateBookmarkLabel :: Bookmark -> Text -> Bookmark
+updateBookmarkLabel (Bookmark bktype _ bktarget bkcreated bklastused) bklabel
+    = Bookmark { 
+        bkType     = bktype,          
+        bkLabel    = bklabel, 
+        bkTarget   = bktarget, 
+        bkCreated  = bkcreated, 
+        bkLastUsed = bklastused 
+    }
+
+updateBookmarkTarget :: Bookmark -> Text -> Bookmark
+updateBookmarkTarget (Bookmark bktype bklabel _ bkcreated bklastused) bktarget
+    = Bookmark { 
+        bkType     = bktype,          
+        bkLabel    = bklabel, 
+        bkTarget   = bktarget, 
+        bkCreated  = bkcreated, 
+        bkLastUsed = bklastused 
+    }
+
+updateBookmarkCreated :: Bookmark -> Day -> Bookmark
+updateBookmarkCreated (Bookmark bktype bklabel bktarget _ bklastused) bkcreated
+    = Bookmark { 
+        bkType     = bktype,          
+        bkLabel    = bklabel, 
+        bkTarget   = bktarget, 
+        bkCreated  = bkcreated, 
+        bkLastUsed = bklastused 
+    }
+
+updateBookmarkLastUsed :: Bookmark -> Day -> Bookmark
+updateBookmarkLastUsed (Bookmark bktype bklabel bktarget bkcreated _) bklastused
+    = Bookmark { 
+        bkType     = bktype,          
+        bkLabel    = bklabel, 
+        bkTarget   = bktarget, 
+        bkCreated  = bkcreated, 
+        bkLastUsed = bklastused 
+    }
 
 header :: Vec.Vector Name
 header = Vec.fromList 
@@ -249,8 +307,8 @@ maxOffsetBKMap = getBKMapMaxLabelLength
 labelOffset :: Int -> Text -> Int
 labelOffset maxOffset label = maxOffset - (DT.length label)
 
-showBKAssignment :: Int -> BKType -> Text -> Text -> Text
-showBKAssignment maxOffset bktype label target = 
+toBKAssignment :: Int -> BKType -> Text -> Text -> Text
+toBKAssignment maxOffset bktype label target = 
        (showBKType bktype) <> DT.replicate (offsetBKType bktype) " "
     <> label <> DT.replicate (labelOffset maxOffset label) " " <> " = " <> (DT.show target)
 
@@ -260,9 +318,9 @@ showBKMap maxOffset bkMap = _showBKMap $ toAssocList bkMap
         _showBKMap :: [(Text,Bookmark)] -> Text
         _showBKMap [] = ""
         _showBKMap [(label,bk)] 
-             = showBKAssignment maxOffset (bkType bk) label (bkTarget bk)
+             = toBKAssignment maxOffset (bkType bk) label (bkTarget bk)
         _showBKMap ((label,bk):bks) 
-             = showBKAssignment maxOffset (bkType bk) label (bkTarget bk) <> "\n"
+             = toBKAssignment maxOffset (bkType bk) label (bkTarget bk) <> "\n"
             <> _showBKMap bks
 
 _logDebug 
@@ -343,10 +401,23 @@ writeCSVFile csvFilePath bkMap = Linear.run writeCSVFile'
             Linear.release csvFile'
             Linear.return (Linear.Ur ())
 
+bookmarkAsAssignment :: Bookmark -> Text
+bookmarkAsAssignment b = toBKAssignment 0 (bkType b) (bkLabel b) (bkTarget b)
+
 addBookmark :: Bookmark
+            -> FilePath
             -> BKMap
-            -> BKMap
-addBookmark b bkMap = insertBK b bkMap
+            -> Either Text BKMap
+addBookmark b homedir bkMap 
+    | isBookmark b = do
+        let path = dropTrailingPathSeparator . normalise $ DT.unpack (bkTarget b)
+        if isValid path
+        then  if isAbsolute path
+              then return $ insertBK (updateBookmarkTarget b (DT.pack path)) bkMap
+              else return $ insertBK (updateBookmarkTarget b (DT.pack . WBL.expandHomeDirectory homedir $ path)) bkMap
+        else Left $ "bookmark is not a valid path " <> bookmarkAsAssignment b
+    | isAlias b = Right $ insertBK b bkMap
+    | otherwise = Left $ "invalid bookmark " <> bookmarkAsAssignment b
 
 removeBookmark :: Text
                -> BKMap
