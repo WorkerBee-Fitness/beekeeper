@@ -47,7 +47,7 @@ _progVersion = "0.0.0.1"
 
 data BKOption 
     = OptAddBK BKType Text Text
-    | OptRunBK Text
+    | OptRunBK Text [Text]
     | OptRemoveBK Text
     | OptFindBK Text
     | OptList
@@ -109,8 +109,8 @@ parseBKFind [label] = Right $ OptFindBK label
 parseBKFind _       = Left  $ "invalid number of arguments given to find"
 
 parseBKRun :: [Text] -> Either Text BKOption
-parseBKRun [label] = Right $ OptRunBK label
-parseBKRun _       = Left  $ "invalid number of arguments given to run"
+parseBKRun (label:args) = Right $ OptRunBK label args
+parseBKRun _            = Left  $ "invalid number of arguments given to run"
 
 parseOpt :: [Text] -> Either Text BKOption
 parseOpt []              = Right OptRecentsBK
@@ -127,8 +127,7 @@ parseOpt ["-v"]          = Right OptVersionBK
 parseOpt ["--version"]   = Right OptVersionBK
 parseOpt ["-h"]          = Right OptHelpBK
 parseOpt ["--help"]      = Right OptHelpBK
-parseOpt args@[_]        = parseBKRun args
-parseOpt (s:_)           = Left $ "invalid option: " <> s
+parseOpt args            = parseBKRun args
 
 handleOpt :: BKOption -> IO ()
 handleOpt OptRecentsBK      = handleRecentsbk
@@ -137,7 +136,7 @@ handleOpt OptBookmarks      = handleListBookmarks (Just BKBookmark)
 handleOpt OptAliases        = handleListBookmarks (Just BKAlias)
 handleOpt (OptAddBK ty l t) = handleAddbk ty l t
 handleOpt (OptFindBK l)     = handleFindbk l
-handleOpt (OptRunBK l)      = handleRunbk l
+handleOpt (OptRunBK l args) = handleRunbk l args
 handleOpt (OptRemoveBK l)   = handleRemovebk l
 handleOpt OptHelpBK         = handleHelp
 handleOpt OptVersionBK      = handleVersion
@@ -190,18 +189,18 @@ handleRemovebk labelbk = handler $
         putStrLn $ "removed bookmark " <> show (DT.unpack labelbk)
         return newMap
 
-handleRunbk :: Text -> IO ()
-handleRunbk labelbk = handler_ $ \csvContents -> do
+handleRunbk :: Text -> [Text] -> IO ()
+handleRunbk labelbk args = handler_ $ \csvContents -> do
     case findBookmark labelbk csvContents of
         Nothing -> putStrLnStdErr $ "bookmark not found " <> DT.show labelbk
         Just b -> 
             case bkType b of
                 BKBookmark -> putStrLn . DT.unpack . bkTarget $ b
                 BKAlias -> do
-                    let target = DT.unpack . bkTarget $ b
-                    putStrLn $ "running "++(show target)
+                    let cmd = DT.unpack $ bkTarget b <> " " <> DT.unwords args
+                    putStrLn $ "running "++(show $ cmd)
                     hFlush stdout
-                    void $ spawnCommand target
+                    void $ spawnCommand cmd
 
 handleRecentsbk :: IO ()
 handleRecentsbk = handler_
