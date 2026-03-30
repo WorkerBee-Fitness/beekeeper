@@ -95,10 +95,7 @@ import qualified Data.Csv.Incremental      as CsvInc
 import qualified Data.Vector               as Vec
 import qualified Data.Map                  as Map
 
--- Internal Imports:
-import qualified WBeeLib.ByteString        as WBL
-import qualified WBeeLib.Text              as WBL
-import qualified WBeeLib.FileSystem        as WBL
+import qualified Lib as Lib
 
 undefined :: a
 undefined = Prelude.undefined
@@ -126,7 +123,7 @@ instance Show BKType where
 
 instance FromField  BKType where
     parseField :: Field -> Parser BKType
-    parseField = parseField' . (bimap DT.unpack id) . parseBKType . WBL.byteStringToTextUTF8
+    parseField = parseField' . (bimap DT.unpack id) . parseBKType . Lib.byteStringToTextUTF8
         where
             parseField' (Right bt) = return bt
             parseField' (Left err) = fail err
@@ -147,18 +144,18 @@ instance ToField BKType where
 instance FromField Day where
     parseField :: Field -> Parser Day
     parseField s = 
-        case formatParseM iso8601Format (WBL.byteStringToStringUTF8 s) of
+        case formatParseM iso8601Format (Lib.byteStringToStringUTF8 s) of
             Nothing -> _fail $ s <> " is not a valid ISO8601 date"
             Just day -> return day
         where
-            _fail = fail . WBL.byteStringToStringUTF8
+            _fail = fail . Lib.byteStringToStringUTF8
 
 instance ToField Day where
     toField :: Day -> Field
     toField day = 
         case formatShowM iso8601Format day of
             Nothing -> error "[toField]: failed to pretty print day"
-            Just s -> WBL.stringUTF8ToByteString s
+            Just s -> Lib.stringUTF8ToByteString s
 
 data Bookmark = Bookmark {
     bkType     :: !BKType,
@@ -341,7 +338,7 @@ feedCSVFile parserFam csvFile = Linear.do
     then Linear.return (Linear.Ur (parserFam BS.empty),csvFile')
     else Linear.do
         (Linear.Ur line,csvFile'') <- Linear.hGetLine csvFile'
-        let line' = WBL.textUTF8ToByteString (Data.Text.concat [line,(Data.Text.pack "\n")])
+        let line' = Lib.textUTF8ToByteString (Data.Text.concat [line,(Data.Text.pack "\n")])
         let parser = parserFam line'
         Linear.return (Linear.Ur parser,csvFile'')
 
@@ -390,8 +387,8 @@ writeCSVFile
     -> IO ()
 writeCSVFile csvFilePath bkMap = Linear.run writeCSVFile' 
     where        
-        bks = WBL.byteStringToTextUTF8 . 
-                WBL.lazyByteStringToByteString $ 
+        bks = Lib.byteStringToTextUTF8 . 
+                Lib.lazyByteStringToByteString $ 
                     encodeByName header $ bookmarks bkMap
 
         writeCSVFile' :: Linear.RIO (Linear.Ur ())
@@ -414,7 +411,7 @@ addBookmark b homedir bkMap
         if isValid path
         then  if isAbsolute path
               then return $ insertBK (updateBookmarkTarget b (DT.pack path)) bkMap
-              else return $ insertBK (updateBookmarkTarget b (DT.pack . WBL.expandHomeDirectory homedir $ path)) bkMap
+              else return $ insertBK (updateBookmarkTarget b (DT.pack . Lib.expandHomeDirectory homedir $ path)) bkMap
         else Left $ "bookmark is not a valid path " <> bookmarkAsAssignment b
     | isAlias b = Right $ insertBK b bkMap
     | otherwise = Left $ "invalid bookmark " <> bookmarkAsAssignment b
@@ -466,11 +463,11 @@ handler = _handler True
 
 initializeWorkDir :: IO FilePath
 initializeWorkDir = do 
-    homeDir <- WBL.getHomeDirectory
+    homeDir <- Lib.getHomeDirectory
     let wdir = homeDir <> "/.bk"
     let bookmarkCSVFile = wdir <> "/bk-bookmarks.csv"
-    WBL.createDirectoryIfMissing False wdir
-    bookmarkCSVFileExists <- WBL.doesFileExist bookmarkCSVFile
+    Lib.createDirectoryIfMissing False wdir
+    bookmarkCSVFileExists <- Lib.doesFileExist bookmarkCSVFile
     when (not bookmarkCSVFileExists) $ 
         writeCSVFile bookmarkCSVFile emptyBKMap
     return bookmarkCSVFile

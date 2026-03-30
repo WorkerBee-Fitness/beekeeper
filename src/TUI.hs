@@ -15,12 +15,12 @@ import           Data.Time.Calendar (Day)
 import           Data.Text          (Text)
 import           System.IO          (hFlush, 
                                      stdout)
+import           System.Exit        (exitFailure)
 import           Data.Time          (UTCTime (..),
                                      getCurrentTime)
 import qualified Data.Text as DT
 
 -- Internal Imports:                                     
-import           WBeeLib.System.IO  (putStrLnStdErr)
 import           BK                 (Bookmark (..), 
                                      BKType (..),
                                      addBookmark, 
@@ -36,8 +36,7 @@ import           BK                 (Bookmark (..),
                                      filterBKMap, 
                                      isAlias, 
                                      isBookmark)
-import WBeeLib.FileSystem (FileSystemMonad(getHomeDirectory))
-import System.Exit (exitFailure)
+import qualified Lib
 
 _progName :: String
 _progName = "bk"
@@ -167,9 +166,9 @@ handleAddbk ty l t = do
                         bkLastUsed = createdbk 
                       } 
                in handler $ \csvContents -> do
-                    homedir <- getHomeDirectory
+                    homedir <- Lib.getHomeDirectory
                     either 
-                        (\errMsg -> do putStrLnStdErr errMsg
+                        (\errMsg -> do Lib.putStrLnStdErr errMsg
                                        exitFailure)
                         (\updatedMap -> 
                             do putStrLn $ "created " <> DT.unpack (showBKType typebk)  <> " " <> show (DT.unpack labelbk)
@@ -179,7 +178,7 @@ handleAddbk ty l t = do
 handleFindbk :: Text -> IO ()
 handleFindbk labelbk = handler_
     (\csvContents -> case findBookmark labelbk csvContents of
-                        Nothing -> putStrLnStdErr $ "bookmark not found " <> DT.show labelbk 
+                        Nothing -> Lib.putStrLnStdErr $ "bookmark not found " <> DT.show labelbk 
                         Just b ->  print b)
 
 handleRemovebk :: Text -> IO ()
@@ -192,7 +191,7 @@ handleRemovebk labelbk = handler $
 handleRunbk :: Text -> [Text] -> IO ()
 handleRunbk labelbk args = handler_ $ \csvContents -> do
     case findBookmark labelbk csvContents of
-        Nothing -> putStrLnStdErr $ "bookmark not found " <> DT.show labelbk
+        Nothing -> Lib.putStrLnStdErr $ "bookmark not found " <> DT.show labelbk
         Just b -> 
             case bkType b of
                 BKBookmark -> putStrLn . DT.unpack . bkTarget $ b
@@ -229,4 +228,4 @@ mainLoop = do
     s <- getArgs
     case parseOpt $ map DT.pack s of
         Right opt -> handleOpt opt
-        Left err -> putStrLnStdErr err
+        Left err -> Lib.putStrLnStdErr err
