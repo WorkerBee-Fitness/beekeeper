@@ -43,7 +43,7 @@ _progName :: String
 _progName = "bk"
 
 _progVersion :: String
-_progVersion = "0.0.0.1"
+_progVersion = "0.1"
 
 data BKOption 
     = OptAddBK BKType Text Text
