@@ -5,7 +5,7 @@
 {-# LANGUAGE DataKinds              #-}
 {-# OPTIONS_GHC -Wno-partial-fields #-}
 {-# OPTIONS_GHC -Wno-name-shadowing #-}
-module TUI (mainLoop) where
+module BK.TUI (mainLoop) where
 
 --
 -- * External Imports:
@@ -31,26 +31,27 @@ import Data.Text            qualified as DT
 --
 -- * Internal Imports:                                     
 -- 
-import BK  (BKType (..)
-           ,Bookmark (..)
-           ,BKMap
-           ,showBKType
-           ,addBookmark
-           ,bookmark
-           ,findBookmark
-           ,removeBookmark
-           ,maxOffsetBKMap
-           ,recentBookmarks
-           ,showBKMap
-           ,filterBKMap
-           ,isAlias
-           ,isBookmark
-           ,readCSVFile
-           ,writeCSVFile
-           ,initializeWorkDir, filterLabels)
+import BK.BKMap  (BKType (..)
+                 ,Bookmark (..)
+                 ,BKMap
+                 ,showBKType
+                 ,addBookmark
+                 ,bookmark
+                 ,findBookmark
+                 ,removeBookmark
+                 ,maxOffsetBKMap
+                 ,recentBookmarks
+                 ,showBKMap
+                 ,filterBKMap
+                 ,isAlias
+                 ,isBookmark
+                 ,readCSVFile
+                 ,writeCSVFile
+                 ,initializeWorkDir
+                 ,filterLabels)
 
-import qualified Lib
-import qualified Data.Char as DT
+import BK.Lib    qualified as Lib
+import Data.Char qualified as DT
 
 _progName :: String
 _progName = "bk"

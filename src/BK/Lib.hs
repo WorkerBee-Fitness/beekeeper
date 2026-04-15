@@ -1,5 +1,5 @@
 {-# LANGUAGE ViewPatterns #-}
-module Lib 
+module BK.Lib 
     (FileSystemMonad(..),
     byteStringToTextUTF8, 
     byteStringToStringUTF8,
