@@ -10,7 +10,8 @@ module Lib
     putStrLnStdOut,
     putStrLnStdErr,
     andF,
-    orF) where
+    orF,
+    dq_text) where
 
 import qualified Data.ByteString      as BS
 import qualified Data.ByteString.Lazy as BL
@@ -98,3 +99,8 @@ andF f g x = (f x) && (g x)
 
 orF :: (a -> Bool) -> (a -> Bool) -> (a -> Bool)
 orF f g x = (f x) || (g x)
+
+-- Text helpers
+-- | Double quote some text.
+dq_text :: DT.Text -> DT.Text
+dq_text t = "\""<>t<>"\""

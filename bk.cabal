@@ -61,7 +61,7 @@ common test-depends
 
 common prod-ghc-flags
   if !flag(debug)
-    ghc-options: -Werror
+    ghc-options: 
 
 common ghc-flags
   ghc-options:

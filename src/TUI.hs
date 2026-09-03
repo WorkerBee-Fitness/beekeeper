@@ -45,7 +45,8 @@ import BK  (BKType (..)
            ,showBKMap
            ,filterBKMap
            ,isAlias
-           ,isBookmark)
+           ,isBookmark
+           ,renameBookmark)
 
 import qualified Lib
 import qualified Data.Char as DT
@@ -63,6 +64,7 @@ _progVersion = "v0.2"
 -- | All available command-line options.
 data BKOption
     = OptAddBK BKType Text Text -- ^ Option "add" handles both bookmarks and aliases.
+    | OptRenameBK Text Text     -- ^ Option "rename" handles renaming a bookmark/alias.
     | OptRunBK Text [Text]      -- ^ Option "run" handles running a bookmark with arguments.
     | OptRemoveBK Text          -- ^ Option "remove" handles removing a bookmark/alias.    
     | OptFindBK Text            -- ^ Option "find" searches for a bookmark.
@@ -91,10 +93,10 @@ assignParser = do
 -- Labels must start with a letter and then be alpha-numeric with the addition of @_@ and @-@.
 labelParser :: Atto.Parser Text
 labelParser = do
-    startChar <- Atto.take 1
+    startChar <- Atto.take 1      
     if DT.all DT.isAlpha startChar
     then do
-        rest <- Atto.takeWhile1 $ DT.isAlphaNum `Lib.orF` (`elem` ['-','_'])
+        rest <- Atto.takeWhile1 $ DT.isAlphaNum `Lib.orF` (`elem` ['-','_'])             
         return $ DT.append startChar rest
     else fail $ "parse error: bookmark labels must start with a letter."
 
@@ -106,13 +108,9 @@ labelParser = do
 targetParser :: Atto.Parser Text
 targetParser = Atto.takeText            
 
--- | Parses an option that takes a label as input.
-optLabelParser 
-    :: (Text -> BKOption)    -- ^ Option we are parsing
-    -> Atto.Parser BKOption
-optLabelParser opt = do 
-    label <- labelParser
-    return $ opt label
+-- | Parses the label of a bookmark.
+labelArg :: OptA.ReadM Text
+labelArg = OptA.eitherReader $ Atto.parseOnly labelParser . DT.pack
 
 -- | Parses an "add" option (`OptAddBK`) from an assignment argument.
 optAddBKParser 
@@ -121,25 +119,6 @@ optAddBKParser
 optAddBKParser bkType = do 
     (label,target) <- assignParser
     return $ OptAddBK bkType label target
-
--- | Parses the @run@ option.
--- The list of arguments are parsed by another parser and then passed in via
--- applicative sequencing. See `bkRunCmdParser` implementation.
-optRunBKParser 
-    :: Atto.Parser ([Text] -> BKOption)
-optRunBKParser = do 
-    label <- labelParser
-    return $ OptRunBK label
-
--- | Parses the @remove@ option.
-optRemoveBKParser 
-    :: Atto.Parser BKOption
-optRemoveBKParser = optLabelParser OptRemoveBK
-
--- | Parses the @find@ option.
-optFindBKParser 
-    :: Atto.Parser BKOption
-optFindBKParser = optLabelParser OptFindBK
 
 --
 -- ** Optparse-Applicative Parsers
@@ -164,32 +143,25 @@ bkAddCmdParser = OptA.hsubparser
 
 -- | Parses the arguments to the run option.
 bkRunCmdParser :: OptA.Parser BKOption
-bkRunCmdParser = 
-    (OptA.argument labelParser (OptA.metavar "LABEL")  
-    <*> 
-    (OptA.many $ OptA.argument argParser (OptA.metavar "ARGS")))
-    where
-        labelParser ::  OptA.ReadM ([Text] -> BKOption)
-        labelParser = OptA.eitherReader $ Atto.parseOnly optRunBKParser . DT.pack
-
-        argParser :: OptA.ReadM Text
-        argParser = OptA.str
+bkRunCmdParser = OptRunBK
+              <$> OptA.argument labelArg (OptA.metavar "LABEL")  
+              <*> (OptA.many $ OptA.argument OptA.str (OptA.metavar "ARGS"))
 
 -- | Parses the arguments to the @remove@ command.
 bkRemoveCmdParser :: OptA.Parser BKOption
-bkRemoveCmdParser = 
-    OptA.argument labelParser (OptA.metavar "LABEL")  
-    where
-        labelParser ::  OptA.ReadM BKOption
-        labelParser = OptA.eitherReader $ Atto.parseOnly optRemoveBKParser . DT.pack
+bkRemoveCmdParser = OptRemoveBK
+                 <$> OptA.argument labelArg (OptA.metavar "LABEL")  
+
+-- | Parses the arguments to the @remove@ command.
+bkRenameCmdParser :: OptA.Parser BKOption
+bkRenameCmdParser = OptRenameBK 
+                 <$> OptA.argument labelArg (OptA.metavar "LABEL1") 
+                 <*> OptA.argument labelArg (OptA.metavar "LABEL2")
 
 -- | Parses the argument to @find@ command.
 bkFindCmdParser :: OptA.Parser BKOption
-bkFindCmdParser = 
-    OptA.argument labelParser (OptA.metavar "LABEL")  
-    where
-        labelParser ::  OptA.ReadM BKOption
-        labelParser = OptA.eitherReader $ Atto.parseOnly optFindBKParser . DT.pack
+bkFindCmdParser = OptFindBK
+               <$> OptA.argument labelArg (OptA.metavar "LABEL")      
 
 -- | Parses the @list@ command.
 bkListCmdParser :: OptA.Parser BKOption
@@ -210,13 +182,15 @@ bkRecentsParser = pure OptRecentsBK
 -- | Parses the various command-line options.
 bkCmdParser :: OptA.Parser BKOption
 bkCmdParser = OptA.hsubparser 
-    (  OptA.command "add"       (OptA.info (bkAddCmdParser)         (OptA.progDesc "Add a bookmark or alias"))
-    <> OptA.command "run"       (OptA.info (bkRunCmdParser)         (OptA.progDesc "Runs a bookmark or alias"))
-    <> OptA.command "remove"    (OptA.info (bkRemoveCmdParser)      (OptA.progDesc "Removes a bookmark or alias"))
-    <> OptA.command "find"      (OptA.info (bkFindCmdParser)        (OptA.progDesc "Searches for a bookmark or alias"))
-    <> OptA.command "list"      (OptA.info (bkListCmdParser)        (OptA.progDesc "Lists all bookmarks and aliases"))
-    <> OptA.command "bookmarks" (OptA.info (bkListBksCmdParser)     (OptA.progDesc "Lists all bookmarks"))
-    <> OptA.command "aliases"   (OptA.info (bkListAliasesCmdParser) (OptA.progDesc "Lists all aliases"))
+    (  OptA.command "bookmark"  (OptA.info (bkAddBkParser BKBookmark) (OptA.progDesc "Add a bookmark"))
+    <> OptA.command "alias"     (OptA.info (bkAddBkParser BKAlias)    (OptA.progDesc "Add an alias"))
+    <> OptA.command "run"       (OptA.info (bkRunCmdParser)           (OptA.progDesc "Runs a bookmark or alias"))
+    <> OptA.command "rename"    (OptA.info (bkRenameCmdParser)        (OptA.progDesc "Renames a bookmark or alias"))
+    <> OptA.command "remove"    (OptA.info (bkRemoveCmdParser)        (OptA.progDesc "Removes a bookmark or alias"))
+    <> OptA.command "find"      (OptA.info (bkFindCmdParser)          (OptA.progDesc "Searches for a bookmark or alias"))
+    <> OptA.command "list"      (OptA.info (bkListCmdParser)          (OptA.progDesc "Lists all bookmarks and aliases"))
+    <> OptA.command "bookmarks" (OptA.info (bkListBksCmdParser)       (OptA.progDesc "Lists all bookmarks"))
+    <> OptA.command "aliases"   (OptA.info (bkListAliasesCmdParser)   (OptA.progDesc "Lists all aliases"))
     )
     OptA.<|> bkRunCmdParser  -- run is the default when no commands are given.
     OptA.<|> bkRecentsParser -- No options or arguments, then show recents.
@@ -236,14 +210,15 @@ bkOpts = OptA.info (bkCmdParser  OptA.<**> OptA.helper OptA.<**> OptA.simpleVers
 handleOpt 
     :: BKOption -- ^ Option to handle
     -> IO ()
-handleOpt OptRecentsBK      = handleRecentsbk
-handleOpt OptList           = handleListBookmarks Nothing
-handleOpt OptBookmarks      = handleListBookmarks (Just BKBookmark)
-handleOpt OptAliases        = handleListBookmarks (Just BKAlias)
-handleOpt (OptAddBK ty l t) = handleAddbk ty l t
-handleOpt (OptFindBK l)     = handleFindbk l
-handleOpt (OptRunBK l args) = handleRunbk l args
-handleOpt (OptRemoveBK l)   = handleRemovebk l
+handleOpt OptRecentsBK        = handleRecentsbk
+handleOpt OptList             = handleListBookmarks Nothing
+handleOpt OptBookmarks        = handleListBookmarks (Just BKBookmark)
+handleOpt OptAliases          = handleListBookmarks (Just BKAlias)
+handleOpt (OptAddBK ty l t)   = handleAddbk ty l t
+handleOpt (OptFindBK l)       = handleFindbk l
+handleOpt (OptRunBK l args)   = handleRunbk l args
+handleOpt (OptRemoveBK l)     = handleRemovebk l
+handleOpt (OptRenameBK l1 l2) = handleRenamebk l1 l2
 
 -- | Handler for the @add@ option.
 handleAddbk 
@@ -293,6 +268,20 @@ handleRemovebk labelbk = handler $
         let newMap = removeBookmark labelbk csvContents
         putStrLn $ "removed bookmark " <> show (DT.unpack labelbk)
         return newMap
+
+-- | Handler for the @rename@ option.
+handleRenamebk 
+    :: Text  -- ^ Label of the bookmark to rename
+    -> Text  -- ^ new label
+    -> IO ()
+handleRenamebk old_labelbk new_labelbk = handler $ 
+    \csvContents -> do
+        maybe 
+            ((Lib.putStrLnStdErr $ "error: bookmark " <> Lib.dq_text old_labelbk <> " couldn't be found.") >> pure csvContents)
+            (\newMap -> 
+                do putStrLn . DT.unpack $ "renamed " <> Lib.dq_text old_labelbk <> " to " <> Lib.dq_text new_labelbk
+                   pure newMap)
+            $ renameBookmark old_labelbk new_labelbk csvContents
 
 -- | Handler for the @run@ option.
 handleRunbk 

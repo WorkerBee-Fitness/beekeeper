@@ -32,24 +32,24 @@ The following sections give examples of every feature Beekeeper supports.
 To add a bookmark use the following command:
 
 ```.bash
-bk add bookmark LABEL=TARGET
+bk bookmark LABEL=TARGET
 ```
 
 the string `LABEL` is the name of the bookmark and its value is `TARGET`. For
-example, `bk add bookmark math-proj="path/to/math/project"` will add a bookmark
+example, `bk bookmark math-proj="path/to/math/project"` will add a bookmark
 with label `math-proj` whose target is `path/to/math/project`.
 
 Adding an alias is very similar to adding a bookmark:
 
 ```.bash
-bk add alias code-proj="code path/to/project"
+bk alias code-proj="code path/to/project"
 ```
 
 The labels of bookmarks must begin with an alphabet symbol and then only consist
 of alphanumeric symbols or underscore or hyphen. Targets are not allowed to be
 empty.
 
-The main difference between `bk add bookmark` and `bk add alias` is that when we
+The main difference between `bk bookmark` and `bk alias` is that when we
 ask Beekeeper to run a bookmark its target is output to the terminal, but when
 we ask Beekeeper to run an alias it will execute its target as a command.
 
@@ -84,6 +84,13 @@ bk find LABEL
 
 to search for the target whose label is `LABEL`. A more sophisticated search is
 underdevelopment.
+
+# Renaming a bookmark or alias
+Use:
+
+```.bash
+bk rename OLD_LABEL NEW_LABEL
+```
 
 # Removing a bookmark or alias
 Use:

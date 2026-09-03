@@ -6,7 +6,6 @@
 {-# LANGUAGE    OverloadedStrings #-}
 {-# LANGUAGE    ViewPatterns      #-}
 {-# OPTIONS_GHC -Wno-orphans      #-}
-{-# OPTIONS_GHC -Wno-unused-top-binds #-}
 module BK 
     (Bookmark(bkType,bkLabel, bkTarget, bkCreated, bkLastUsed),    
      BKType(..),  
@@ -16,6 +15,7 @@ module BK
      writeCSVFile,
      addBookmark,
      removeBookmark,
+     renameBookmark,
      findBookmark,
      handler,
      handler_,
@@ -53,8 +53,8 @@ import Prelude                  (Either (..),
                                  (&&),
                                  map,
                                  (<>),
-                                 print, 
-                                 flip)
+                                 print,
+                                 flip, Applicative (..))
 import GHC.Generics             (Generic)
 import Data.Text                (Text, 
                                  concat, 
@@ -88,7 +88,6 @@ import Data.Time.Format.ISO8601 (ISO8601 (iso8601Format),
                                  Format (formatShowM),
                                  formatParseM)
 
-import qualified Prelude
 import qualified Control.Functor.Linear    as Linear
 import qualified System.IO.Resource.Linear as Linear
 import qualified Data.Unrestricted.Linear  as Linear
@@ -100,9 +99,6 @@ import qualified Data.Vector               as Vec
 import qualified Data.Map                  as Map
 
 import qualified Lib  
-
-undefined :: a
-undefined = Prelude.undefined
 
 data BKType = BKAlias 
             | BKBookmark
@@ -204,48 +200,8 @@ instance Show Bookmark where
 instance FromRecord Bookmark
 instance ToRecord   Bookmark
 
-updateBookmarkType :: Bookmark -> BKType -> Bookmark
-updateBookmarkType (Bookmark _ bklabel bktarget bkcreated bklastused) bktype
-    = Bookmark { 
-        bkType     = bktype,          
-        bkLabel    = bklabel, 
-        bkTarget   = bktarget, 
-        bkCreated  = bkcreated, 
-        bkLastUsed = bklastused 
-    }
-
-updateBookmarkLabel :: Bookmark -> Text -> Bookmark
-updateBookmarkLabel (Bookmark bktype _ bktarget bkcreated bklastused) bklabel
-    = Bookmark { 
-        bkType     = bktype,          
-        bkLabel    = bklabel, 
-        bkTarget   = bktarget, 
-        bkCreated  = bkcreated, 
-        bkLastUsed = bklastused 
-    }
-
 updateBookmarkTarget :: Bookmark -> Text -> Bookmark
 updateBookmarkTarget (Bookmark bktype bklabel _ bkcreated bklastused) bktarget
-    = Bookmark { 
-        bkType     = bktype,          
-        bkLabel    = bklabel, 
-        bkTarget   = bktarget, 
-        bkCreated  = bkcreated, 
-        bkLastUsed = bklastused 
-    }
-
-updateBookmarkCreated :: Bookmark -> Day -> Bookmark
-updateBookmarkCreated (Bookmark bktype bklabel bktarget _ bklastused) bkcreated
-    = Bookmark { 
-        bkType     = bktype,          
-        bkLabel    = bklabel, 
-        bkTarget   = bktarget, 
-        bkCreated  = bkcreated, 
-        bkLastUsed = bklastused 
-    }
-
-updateBookmarkLastUsed :: Bookmark -> Day -> Bookmark
-updateBookmarkLastUsed (Bookmark bktype bklabel bktarget bkcreated _) bklastused
     = Bookmark { 
         bkType     = bktype,          
         bkLabel    = bklabel, 
@@ -452,6 +408,16 @@ removeBookmark :: Text
                -> BKMap
 removeBookmark = deleteBookmark 
 
+renameBookmark :: Text
+               -> Text
+               -> BKMap
+               -> Maybe BKMap
+renameBookmark old_label new_label bkMap 
+    = do old_value <- findBookmark old_label bkMap
+         pure . insertBK (old_value {bkLabel = new_label}) 
+              . deleteBookmark old_label
+              $ bkMap
+
 findBookmark :: Text
              -> BKMap
              -> Prelude.Maybe Bookmark
@@ -496,14 +462,13 @@ initializeWorkDir :: IO FilePath
 initializeWorkDir = do 
     homeDir <- Lib.getHomeDirectory
     let wdir = homeDir <> "/.bk"
-    let bookmarkCSVFile = wdir <> "/bk-bookmarks.csv"
+    let bookmarkCSVFile = wdir <> "/bookmarks.csv"
     Lib.createDirectoryIfMissing False wdir
     bookmarkCSVFileExists <- Lib.doesFileExist bookmarkCSVFile
     when (not bookmarkCSVFileExists) $ 
         writeCSVFile bookmarkCSVFile emptyBKMap
     return bookmarkCSVFile
 
--- Change (BKMap -> IO BKMap) to ((Int,BKMap) -> IO BKMap).
 _handler :: Bool -> (BKMap  -> IO BKMap) -> IO ()
 _handler writeMode action = 
     do bookmarkCSVFile <- initializeWorkDir     
