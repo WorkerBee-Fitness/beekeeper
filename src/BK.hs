@@ -35,7 +35,7 @@ import Prelude.Linear           (Show(..),
                                  Either,
                                  FilePath,
                                  putStrLn,
-                                 otherwise)
+                                 otherwise, IsString (..))
 import Prelude                  (Either (..),
                                  Foldable (..),
                                  Eq (..),
@@ -142,8 +142,7 @@ parseBKType s
 
 instance ToField BKType where
   toField :: BKType -> Field
-  toField BKAlias = "alias"
-  toField BKBookmark = "bookmark"
+  toField = fromString . show
 
 instance FromField Day where
     parseField :: Field -> Parser Day
