@@ -3,3 +3,5 @@
 .DS_Store
 *.mp4
 *.mov
+dist-newstyle
+test-work-dirs
