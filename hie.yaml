@@ -1,10 +1,10 @@
 cradle:
-  stack:
-    - path: "./src"
-      component: "bk:lib"
+  cabal:
+    - path: "src"
+      component: "lib:bk"
 
-    - path: "./app/Main.hs"
-      component: "bk:exe:bk-exe"
+    - path: "app/Main.hs"
+      component: "bk:exe:bk"
 
-    - path: "./test"
+    - path: "test"
       component: "bk:test:bk-test"
