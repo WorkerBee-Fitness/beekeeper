@@ -6,8 +6,9 @@
 {-# LANGUAGE    OverloadedStrings #-}
 {-# LANGUAGE    ViewPatterns      #-}
 {-# OPTIONS_GHC -Wno-orphans      #-}
-module BK 
-    (Bookmark(bkType,bkLabel, bkTarget, bkCreated, bkLastUsed),    
+module BK.BKMap
+    (BKMap,
+     Bookmark(bkType,bkLabel, bkTarget, bkCreated, bkLastUsed),    
      BKType(..),  
      bookmark,
      parseBKType,   
@@ -25,7 +26,10 @@ module BK
      showBKMap,
      maxOffsetBKMap,
      showBKType,
-     filterBKMap) where
+     filterBKMap,
+     filterLabels,
+     initializeWorkDir,
+     emptyBKMap) where
 
 -- External Imports:
 import Prelude.Linear           (Show(..),
@@ -88,17 +92,25 @@ import Data.Time.Format.ISO8601 (ISO8601 (iso8601Format),
                                  Format (formatShowM),
                                  formatParseM)
 
-import qualified Control.Functor.Linear    as Linear
-import qualified System.IO.Resource.Linear as Linear
-import qualified Data.Unrestricted.Linear  as Linear
-import qualified Data.Text                 as DT 
-import qualified Data.Char                 as DT
-import qualified Data.ByteString           as BS
-import qualified Data.Csv.Incremental      as CsvInc
-import qualified Data.Vector               as Vec
-import qualified Data.Map                  as Map
+import  Prelude                   qualified as Prelude
+import  Control.Functor.Linear    qualified as Linear
+import  System.IO.Resource.Linear qualified as Linear
+import  Data.Unrestricted.Linear  qualified as Linear
+import  Data.Text                 qualified as DT 
+import  Data.Char                 qualified as DT
+import  Data.ByteString           qualified as BS
+import  Data.Csv.Incremental      qualified as CsvInc
+import  Data.Vector               qualified as Vec
+import  Data.Map                  qualified as Map
 
-import qualified Lib  
+--
+-- * Internal Imports
+
+import BK.Lib qualified as Lib
+
+
+_undefined :: a
+_undefined = Prelude.undefined
 
 data BKType = BKAlias 
             | BKBookmark
@@ -281,6 +293,13 @@ filterBKMap pred bkMap = BKMap {
         _map = getBKMap bkMap
         newMap = Map.filter pred _map
         newMax = maxLabels newMap
+
+filterLabels 
+    :: (Text -> Bool)
+    -> BKMap
+    -> [Text]
+filterLabels filter (getBKMap->bkMap) = 
+    Map.keys $ Map.filter (filter . bkLabel) bkMap
 
 toAssocList :: BKMap -> [(Text,Bookmark)]
 toAssocList (BKMap _map _) = Map.assocs _map

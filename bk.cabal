@@ -29,6 +29,7 @@ common extensions
   default-extensions:
     InstanceSigs
     DeriveGeneric
+    ViewPatterns
 
 common base
   build-depends:
@@ -47,8 +48,10 @@ common library-depends
     ,time                 >=1.12      && <1.15
     ,utf8-string          >=1.0.2     && <1.0.3
     ,directory            >=1.3.8     && <1.4
-    ,optparse-applicative >=0.18.1.0  && <0.20.0.0
+    ,optparse-applicative >=0.18.1.0  && <0.20
     ,attoparsec           >=0.14.4    && <0.16
+    ,haskeline            >= 0.8.4    && < 0.9
+    ,toml-parser          >= 2.0.2    && < 2.1
 
 common exe-depends
   build-depends:
@@ -90,11 +93,13 @@ common test-ghc-flags
 library
   import: extensions, base, library-depends, ghc-flags, prod-ghc-flags
   exposed-modules:
-      TUI
-      BK
-      Lib
+      BK.Setup
+      BK.TUI
+      BK.BKMap
+      BK.Lib      
   other-modules:
       Paths_bk
+      BK.Test.SetupTest
   autogen-modules:
       Paths_bk
   hs-source-dirs:
